@@ -102,6 +102,10 @@ struct brgemm_matmul_conf_t {
     bool with_dst_scales;
     bool s8s8_compensation_required;
     bool is_oscale_per_n;
+    bool is_oscale_per_k;
+    bool apply_scales_in_buffer_b;
+    bool req_transpose_scales;
+    bool with_wei_decompression;
     brgemm_broadcast_t src_zp_type;
     brgemm_broadcast_t wei_zp_type;
     brgemm_broadcast_t dst_zp_type;
@@ -164,6 +168,7 @@ struct brgemm_matmul_conf_t {
     bool has_zero_point_a, has_zero_point_b, has_zero_point_c;
     bool post_ops_applicable;
     bool transposed_A;
+    bool transposed_B;
     bool blocked_B;
 
     dim_t zp_a_comp_shift_n;
@@ -261,6 +266,11 @@ struct brgemm_matmul_conf_utils_t {
 
     inline bool is_bf32() const { return bf32_dt; }
 
+    inline bool with_weights_decompression() const {
+        return !utils::one_of(bgmmc.src_dt, data_type::s8, data_type::u8)
+                && weights_decompression_support;
+    }
+
     inline bool is_int8_with_bf16_dst() const {
         return this->is_int8() && bgmmc.dst_dt == data_type::bf16;
     }
@@ -285,6 +295,7 @@ private:
     brgemm_matmul_conf_t &bgmmc;
 
     const bool f32_dt, bf16_dt, f16_dt, int8_dt, bf32_dt;
+    const bool weights_decompression_support;
     const bool A_any_layout;
     const bool B_any_layout;
     const bool C_any_layout;

@@ -236,14 +236,18 @@ status_t brgemm_matmul_t<isa>::execute_body(const exec_ctx_t &ctx) const {
     const auto dst_d = ctx.memory_mdw(DNNL_ARG_DST, pd()->dst_md());
     matmul_helper_t helper(src_d, weights_d, dst_d);
 
+    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
+    const int wei_scale_mask
+            = pd()->attr()->scales_.get(DNNL_ARG_WEIGHTS).mask_;
+    const bool wei_scale_per_k = wei_scale_mask & pd()->wei_qmask_K();
+    const bool wei_scale_per_n = wei_scale_mask & pd()->wei_qmask_N();
     auto &scratchpad = ctx.get_scratchpad_grantor();
     const float *oscales = precompute_scales(
-            scratchpad, src_scales, wei_scales, pd()->N(), pd()->attr());
+            scratchpad, src_scales, wei_scales, pd()->K(), pd()->N(), wei_scale_per_k, wei_scale_per_n, pd()->attr(), 1.f,bgmmc.req_transpose_scales );
 
     brg_matmul_exec_ctx_t brgmm_ctx(ctx, pd(), oscales, src_zero_point,
             wei_zero_point, dst_zero_point, dst_scales, helper);
 
-    const auto &bgmmc = pd()->get_brgemm_matmul_conf();
     const bool use_buffer_a
             = bgmmc.use_buffer_a || bgmmc.use_buffer_a_tail_only;
     const int num_threads = brgmm_ctx.get_num_threads_for_parallelization();

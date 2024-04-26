@@ -151,6 +151,9 @@ brgemm_matmul_conf_utils_t::brgemm_matmul_conf_utils_t(
     , int8_dt(utils::one_of(bgmmc.src_dt, u8, s8) && bgmmc.wei_dt == s8
               && one_of(bgmmc.dst_dt, u8, s8, s32, f32, bf16))
     , bf32_dt(false)
+    , weights_decompression_support(one_of(bgmmc.wei_dt, u8, s8)
+              && one_of(attr.fpmath_.mode_, fpmath_mode::bf16, fpmath_mode::any)
+              && attr.fpmath_.apply_to_int_)
     , A_any_layout(A_any_layout)
     , B_any_layout(B_any_layout)
     , C_any_layout(C_any_layout)
@@ -739,7 +742,7 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
     bgmmc.b_dt_sz = bgmmc.tr_b_dt_sz = types::data_type_size(bgmmc.wei_dt);
 
     bgmmc.is_bf32 = bm_conf_utils.is_bf32();
-
+    bgmmc.with_wei_decompression = bm_conf_utils.with_weights_decompression();
     // Make BRGeMM compute MatMul as if it were in bfloat16, while down-convert
     // happens during copy-buffer computations
     if (bgmmc.is_bf32 || bm_conf_utils.is_f16()) { assert(!"unreachable"); }
@@ -756,6 +759,9 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
             || !wei_scales.has_default_values();
     if (bgmmc.with_scales) {
         bgmmc.is_oscale_per_n = wei_scales.mask_ == 1 << (bgmmc.ndims - 1);
+        bgmmc.is_oscale_per_k = wei_scales.mask_ == 1 << (bgmmc.ndims - 2);
+        bgmmc.apply_scales_in_buffer_b = bgmmc.is_oscale_per_k
+                && bgmmc.with_wei_decompression && bgmmc.N * bgmmc.K != 1;
 
         // only common and per-oc-channel scales are supported
         VCONDCHECK_BG(wei_scales.mask_ == 0 || bgmmc.is_oscale_per_n,
@@ -838,6 +844,8 @@ status_t init_brgemm_matmul_conf(cpu_isa_t isa, brgemm_matmul_conf_t &bgmmc,
 
     bgmmc.blocked_B = bm_conf_utils.get_blocked_B();
     bgmmc.use_buffer_b = bm_conf_utils.use_buffer_b();
+    bgmmc.transposed_B = bm_conf_utils.check_is_transposed(bgmmc.wei_tag)
+            || bgmmc.wei_tag == adbc;
 
     const bool transposed_A = bm_conf_utils.check_is_transposed(bgmmc.src_tag);
     // if M == 1 we can still treat formally transposed A as plain
