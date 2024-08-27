@@ -161,14 +161,19 @@ struct jit_uni_reorder_kernel_f32_t : public kernel_t, public jit_generator {
     static bool applicable(const prb_t &p) {
         using namespace data_type;
 
+        bool bf16_ok = (mayiuse_bf16() && (p.itype == bf16) && (p.otype == bf16)
+                               && p.beta == 0.f)
+                || (p.itype != bf16 && p.otype != bf16)
+                || (p.itype == f32 && p.otype == bf16 && mayiuse_bf16()
+                        && p.beta == 0.f);
+
         bool ok = true && p.ndims > 0
-                && utils::one_of(p.itype, f32, s32, data_type::s8, u8)
+                && utils::one_of(p.itype, f32, bf16, s32, data_type::s8, u8)
                 && utils::one_of(p.otype, f32, bf16, s32, data_type::s8, u8)
                 && utils::everyone_is(0, p.ioff, p.ooff) /* do we need this? */
                 && utils::one_of(p.beta, 0.f, 1.f) /* anything else? */
                 && simple_impl_desc_init(p, nullptr) && prb_has_small_strides(p)
-                && IMPLICATION(
-                        p.otype == bf16, p.itype == f32 && mayiuse_bf16());
+                && bf16_ok;
 
         return ok;
     }
